@@ -22,7 +22,9 @@ export async function POST(req: Request) {
 
         await dbConnect();
 
-        const user = await User.findOne({ email }).select('+password');
+        // Case insensitive search
+        const emailRegex = new RegExp(`^${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+        const user = await User.findOne({ email: { $regex: emailRegex } }).select('+password');
 
         if (!user) {
             return NextResponse.json({ message: 'Credenciales inválidas' }, { status: 401 });

@@ -19,7 +19,8 @@ export const authOptions = {
 
                 await dbConnect();
 
-                const user = await User.findOne({ email: credentials.email }).select('+password');
+                const emailRegex = new RegExp(`^${credentials.email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+                const user = await User.findOne({ email: { $regex: emailRegex } }).select('+password');
 
                 if (!user) {
                     throw new Error('Usuario no encontrado');
