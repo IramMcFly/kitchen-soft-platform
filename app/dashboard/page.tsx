@@ -96,7 +96,7 @@ export default function Dashboard() {
             });
 
             setMessage({ type: 'success', text: 'Perfil actualizado correctamente' });
-            
+
             // Clear success message after 3 seconds
             setTimeout(() => setMessage(null), 3000);
 
@@ -110,7 +110,7 @@ export default function Dashboard() {
     return (
         <div className="min-h-screen bg-gray-50">
             <Navbar />
-            
+
             <div className="max-w-7xl mx-auto py-10 px-4 sm:px-6 lg:px-8">
                 <header className="mb-8">
                     <h1 className="text-3xl font-bold text-gray-900">
@@ -177,20 +177,32 @@ export default function Dashboard() {
                                 </div>
                                 <div className="ml-4">
                                     <h2 className="text-lg font-medium text-gray-900">Descargar Kitchen Soft</h2>
-                                    <p className="text-sm text-gray-500">Versión 1.0.0 para Windows</p>
+                                    <p className="text-sm text-gray-500">Versión {process.env.NEXT_PUBLIC_LATEST_VERSION || '1.0.0'} para Windows</p>
                                 </div>
                             </div>
                             <div className="mt-6">
                                 <p className="text-gray-600 mb-6">
                                     Obtén la aplicación de escritorio para comenzar a gestionar tus comandas, inventarios y ventas sin depender de internet.
                                 </p>
-                                <button
-                                    onClick={() => alert('¡Próximamente! El enlace de descarga estará disponible aquí.')}
-                                    className="w-full flex justify-center items-center px-4 py-3 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gray-900 hover:bg-gray-800 transition-colors"
-                                >
-                                    <Download className="mr-2 h-5 w-5" />
-                                    Descargar Instalador (.exe)
-                                </button>
+                                {process.env.NEXT_PUBLIC_DOWNLOAD_URL ? (
+                                    <a
+                                        href={process.env.NEXT_PUBLIC_DOWNLOAD_URL}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="w-full flex justify-center items-center px-4 py-3 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-orange-600 hover:bg-orange-700 transition-colors"
+                                    >
+                                        <Download className="mr-2 h-5 w-5" />
+                                        Descargar Instalador (.exe)
+                                    </a>
+                                ) : (
+                                    <button
+                                        onClick={() => alert('¡Próximamente! El enlace de descarga estará disponible aquí.')}
+                                        className="w-full flex justify-center items-center px-4 py-3 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gray-900 hover:bg-gray-800 transition-colors"
+                                    >
+                                        <Download className="mr-2 h-5 w-5" />
+                                        Descargar Instalador (.exe)
+                                    </button>
+                                )}
                                 <p className="mt-4 text-xs text-center text-gray-400">
                                     Requiere Windows 10 o superior (64-bits)
                                 </p>
@@ -204,7 +216,7 @@ export default function Dashboard() {
                             <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
                                 Configuración de Perfil
                             </h3>
-                            
+
                             {message && (
                                 <div className={`mb-4 p-4 rounded-md flex items-center ${message.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
                                     {message.type === 'success' ? <CheckCircle className="h-5 w-5 mr-2" /> : <AlertCircle className="h-5 w-5 mr-2" />}
