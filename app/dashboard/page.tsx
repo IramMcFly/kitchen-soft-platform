@@ -27,6 +27,17 @@ export default function Dashboard() {
             });
             fetchDevices();
         }
+
+        // Check for success param and refresh session if needed
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('success') === 'true') {
+            // Force session update to get latest plan from DB
+            // We pass a dummy object to trigger the 'update' event in the JWT callback
+            update({ refresh: true }).then(() => {
+                router.replace('/dashboard'); // Remove query param
+                setMessage({ type: 'success', text: 'Plan actualizado correctamente!' });
+            });
+        }
     }, [session]);
 
     const fetchDevices = async () => {
@@ -122,6 +133,56 @@ export default function Dashboard() {
                 </header>
 
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    {/* Plan Management Section */}
+                    <div className="bg-white overflow-hidden shadow rounded-lg border border-gray-100 lg:col-span-2">
+                        <div className="px-4 py-5 sm:p-6">
+                            <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+                                Tu Plan Actual
+                            </h3>
+                            <div className="flex items-center justify-between bg-orange-50 p-4 rounded-lg border border-orange-100">
+                                <div>
+                                    <p className="text-sm font-medium text-orange-800">
+                                        Estás suscrito al plan <span className="font-bold text-lg uppercase">{session?.user?.plan || 'FREE'}</span>
+                                    </p>
+                                    <p className="text-sm text-gray-600 mt-1">
+                                        {session?.user?.plan === 'MEDIUM'
+                                            ? 'Tienes acceso a todas las funcionalidades y límites máximos.'
+                                            : 'Actualiza tu plan para obtener más mesas, usuarios y dispositivos.'}
+                                    </p>
+                                </div>
+                                {session?.user?.plan !== 'MEDIUM' && (
+                                    <button
+                                        onClick={() => router.push('/#pricing')}
+                                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 shadow-sm transition-colors"
+                                    >
+                                        Mejorar Plan
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                                <div className="p-3 bg-gray-50 rounded-lg">
+                                    <p className="text-xs text-gray-500 uppercase font-bold">Mesas</p>
+                                    <p className="text-lg font-semibold text-gray-900">
+                                        {session?.user?.plan === 'FREE' ? '4' : session?.user?.plan === 'MINI' ? '8' : '20'} Max
+                                    </p>
+                                </div>
+                                <div className="p-3 bg-gray-50 rounded-lg">
+                                    <p className="text-xs text-gray-500 uppercase font-bold">Usuarios</p>
+                                    <p className="text-lg font-semibold text-gray-900">
+                                        {session?.user?.plan === 'FREE' ? '5' : session?.user?.plan === 'MINI' ? '7' : '28'} Max
+                                    </p>
+                                </div>
+                                <div className="p-3 bg-gray-50 rounded-lg">
+                                    <p className="text-xs text-gray-500 uppercase font-bold">Cajas</p>
+                                    <p className="text-lg font-semibold text-gray-900">
+                                        {session?.user?.plan === 'MEDIUM' ? '2' : '1'} Max
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Device Management Section */}
                     <div className="bg-white overflow-hidden shadow rounded-lg border border-gray-100 lg:col-span-2">
                         <div className="px-4 py-5 sm:p-6">

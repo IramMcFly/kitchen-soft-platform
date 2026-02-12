@@ -1,7 +1,12 @@
+'use client';
+
 import Link from 'next/link';
-import { Download, BookOpen, AlertTriangle } from 'lucide-react';
+import { Download, BookOpen, AlertTriangle, LayoutDashboard } from 'lucide-react'; // Added LayoutDashboard
+import { useSession } from 'next-auth/react';
 
 export default function Hero() {
+    const { data: session } = useSession();
+
     return (
         <div className="relative bg-white overflow-hidden">
             <div className="max-w-7xl mx-auto">
@@ -29,34 +34,37 @@ export default function Hero() {
                             </p>
                             <div className="mt-5 sm:mt-8 sm:flex sm:justify-center lg:justify-start gap-3">
                                 <div className="rounded-md shadow">
-                                    <Link
-                                        href="/auth/register"
-                                        className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 md:py-4 md:text-lg transition-all transform hover:scale-105"
-                                    >
-                                        Comenzar Ahora
-                                    </Link>
-                                </div>
-                                <div className="mt-3 sm:mt-0">
-                                    <a
-                                        href="#"
-                                        className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-orange-700 bg-orange-100 hover:bg-orange-200 md:py-4 md:text-lg transition-all transform hover:scale-105"
-                                    >
-                                        <BookOpen className="w-5 h-5 mr-2" />
-                                        Documentación
-                                    </a>
+                                    {session ? (
+                                        <Link
+                                            href="/dashboard"
+                                            className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 md:py-4 md:text-lg transition-all transform hover:scale-105"
+                                        >
+                                            <LayoutDashboard className="w-5 h-5 mr-2" />
+                                            Ir al Dashboard
+                                        </Link>
+                                    ) : (
+                                        <Link
+                                            href="/auth/register"
+                                            className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 md:py-4 md:text-lg transition-all transform hover:scale-105"
+                                        >
+                                            Comenzar Ahora
+                                        </Link>
+                                    )}
                                 </div>
                             </div>
 
-                            <div className="mt-6 text-sm text-gray-500 bg-orange-50 p-4 rounded-lg border border-orange-100 max-w-lg lg:mr-auto sm:mx-auto lg:mx-0">
-                                <div className="flex items-center gap-2 font-medium text-orange-800 mb-1">
-                                    <AlertTriangle className="h-5 w-5" />
-                                    <p>Importante:</p>
+                            {!session && (
+                                <div className="mt-6 text-sm text-gray-500 bg-orange-50 p-4 rounded-lg border border-orange-100 max-w-lg lg:mr-auto sm:mx-auto lg:mx-0">
+                                    <div className="flex items-center gap-2 font-medium text-orange-800 mb-1">
+                                        <AlertTriangle className="h-5 w-5" />
+                                        <p>Importante:</p>
+                                    </div>
+                                    <p>
+                                        Al registrarte obtendrás acceso inmediato al plan <strong>FREE</strong>.
+                                        Podrás descargar el software y comenzar a operar tu negocio en minutos.
+                                    </p>
                                 </div>
-                                <p>
-                                    Al registrarte obtendrás acceso inmediato al plan <strong>FREE</strong>.
-                                    Podrás descargar el software y comenzar a operar tu negocio en minutos.
-                                </p>
-                            </div>
+                            )}
                         </div>
                     </main>
                 </div>

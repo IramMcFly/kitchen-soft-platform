@@ -26,13 +26,25 @@ const UserSchema = new Schema({
     },
     plan: {
         type: String,
-        enum: ['FREE', 'PREMIUM', 'ENTERPRISE'],
+        enum: ['FREE', 'MINI', 'MEDIUM'],
         default: 'FREE',
     },
     role: {
         type: String,
         enum: ['OWNER', 'ADMIN'],
         default: 'OWNER',
+    },
+    stripeCustomerId: {
+        type: String,
+        required: false,
+    },
+    subscriptionId: {
+        type: String,
+        required: false,
+    },
+    subscriptionStatus: {
+        type: String,
+        required: false,
     },
     devices: [{
         deviceId: { type: String, required: true },
@@ -47,7 +59,7 @@ const UserSchema = new Schema({
         type: Boolean,
         default: true,
     },
-});
+}, { timestamps: true });
 
 // Hash password before saving
 UserSchema.pre('save', async function () {

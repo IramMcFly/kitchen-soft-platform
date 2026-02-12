@@ -47,13 +47,26 @@ export const authOptions = {
         strategy: 'jwt' as const,
     },
     callbacks: {
-        async jwt({ token, user }: any) {
+        async jwt({ token, user, trigger, session }: any) {
             if (user) {
                 token.id = user.id;
                 token.plan = user.plan;
                 token.restaurantName = user.restaurantName;
                 token.role = user.role;
             }
+
+            if (trigger === "update" && token) {
+                await dbConnect();
+                // Assuming token.id is available from initial sign in
+                const freshUser = await User.findById(token.id);
+                if (freshUser) {
+                    token.plan = freshUser.plan;
+                    token.restaurantName = freshUser.restaurantName;
+                    token.role = freshUser.role;
+                    token.name = freshUser.name;
+                }
+            }
+
             return token;
         },
         async session({ session, token }: any) {

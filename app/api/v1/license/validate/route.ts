@@ -25,14 +25,45 @@ export async function GET(req: Request) {
                 return NextResponse.json({ message: 'Licencia suspendida o usuario no encontrado' }, { status: 403 });
             }
 
+            const PLANS_LIMITS: any = {
+                'FREE': {
+                    admins: 1,
+                    tables: 4,
+                    registers: 1,
+                    cashiers: 1,
+                    cooks: 1,
+                    waiters: 2,
+                },
+                'MINI': {
+                    admins: 2,
+                    tables: 8,
+                    registers: 1,
+                    cashiers: 2,
+                    cooks: 2,
+                    waiters: 2,
+                },
+                'MEDIUM': {
+                    admins: 4,
+                    tables: 20,
+                    registers: 2,
+                    cashiers: 4,
+                    cooks: 8,
+                    waiters: 12,
+                }
+            };
+
+            const userPlan = user.plan || 'FREE';
+            const limits = PLANS_LIMITS[userPlan];
+
             return NextResponse.json({
                 valid: true,
                 message: 'Licencia activa',
                 license: {
-                    plan: payload.plan,
-                    restaurantName: payload.restaurantName,
-                    role: payload.role,
-                    expiresAt: payload.exp
+                    plan: userPlan,
+                    restaurantName: user.restaurantName || payload.restaurantName,
+                    role: user.role || payload.role,
+                    expiresAt: payload.exp,
+                    limits: limits
                 }
             });
         } catch (err) {
