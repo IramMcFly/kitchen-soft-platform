@@ -5,6 +5,44 @@ import dbConnect from '@/lib/db';
 import User from '@/models/User';
 import { profileUpdateSchema } from '@/lib/validations';
 
+export async function GET(req: Request) {
+    try {
+        const session = await getServerSession(authOptions);
+
+        if (!session || !session.user?.email) {
+            return NextResponse.json({ message: 'No autorizado' }, { status: 401 });
+        }
+
+        await dbConnect();
+
+        const user = await User.findOne({ email: session.user.email });
+
+        if (!user) {
+            return NextResponse.json({ message: 'Usuario no encontrado' }, { status: 404 });
+        }
+
+        return NextResponse.json(
+            {
+                user: {
+                    name: user.name,
+                    restaurantName: user.restaurantName,
+                    email: user.email,
+                    plan: user.plan,
+                    role: user.role
+                }
+            },
+            { status: 200 }
+        );
+
+    } catch (error: any) {
+        console.error('Profile Fetch Error:', error);
+        return NextResponse.json(
+            { message: 'Error interno del servidor' },
+            { status: 500 }
+        );
+    }
+}
+
 export async function PUT(req: Request) {
     try {
         const session = await getServerSession(authOptions);

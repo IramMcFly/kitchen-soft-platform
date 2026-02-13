@@ -17,14 +17,12 @@ export default function Dashboard() {
     const [devices, setDevices] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [userProfile, setUserProfile] = useState<any>(null);
 
     // Initialize form and fetch devices
     useEffect(() => {
         if (session?.user) {
-            setFormData({
-                name: session.user.name || '',
-                restaurantName: session.user.restaurantName || '',
-            });
+            fetchProfile();
             fetchDevices();
         }
 
@@ -39,6 +37,36 @@ export default function Dashboard() {
             });
         }
     }, [session]);
+
+    const fetchProfile = async () => {
+        try {
+            const res = await fetch('/api/profile');
+            if (res.ok) {
+                const data = await res.json();
+                setUserProfile(data.user);
+                setFormData({
+                    name: data.user.name || '',
+                    restaurantName: data.user.restaurantName || '',
+                });
+
+                // Sync session if plan differs
+                if (session?.user?.plan !== data.user.plan) {
+                    await update({
+                        ...session,
+                        user: {
+                            ...session?.user,
+                            plan: data.user.plan,
+                            name: data.user.name,
+                            restaurantName: data.user.restaurantName,
+                            role: data.user.role
+                        },
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching profile', error);
+        }
+    };
 
     const fetchDevices = async () => {
         try {
@@ -142,15 +170,15 @@ export default function Dashboard() {
                             <div className="flex items-center justify-between bg-orange-50 p-4 rounded-lg border border-orange-100">
                                 <div>
                                     <p className="text-sm font-medium text-orange-800">
-                                        Estás suscrito al plan <span className="font-bold text-lg uppercase">{session?.user?.plan || 'FREE'}</span>
+                                        Estás suscrito al plan <span className="font-bold text-lg uppercase">{userProfile?.plan || session?.user?.plan || 'FREE'}</span>
                                     </p>
                                     <p className="text-sm text-gray-600 mt-1">
-                                        {session?.user?.plan === 'MEDIUM'
+                                        {(userProfile?.plan || session?.user?.plan) === 'MEDIUM'
                                             ? 'Tienes acceso a todas las funcionalidades y límites máximos.'
                                             : 'Actualiza tu plan para obtener más mesas, usuarios y dispositivos.'}
                                     </p>
                                 </div>
-                                {session?.user?.plan !== 'MEDIUM' && (
+                                {(userProfile?.plan || session?.user?.plan) !== 'MEDIUM' && (
                                     <button
                                         onClick={() => router.push('/#pricing')}
                                         className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 shadow-sm transition-colors"
@@ -164,19 +192,19 @@ export default function Dashboard() {
                                 <div className="p-3 bg-gray-50 rounded-lg">
                                     <p className="text-xs text-gray-500 uppercase font-bold">Mesas</p>
                                     <p className="text-lg font-semibold text-gray-900">
-                                        {session?.user?.plan === 'FREE' ? '4' : session?.user?.plan === 'MINI' ? '8' : '20'} Max
+                                        {(userProfile?.plan || session?.user?.plan) === 'FREE' ? '4' : (userProfile?.plan || session?.user?.plan) === 'MINI' ? '8' : '20'} Max
                                     </p>
                                 </div>
                                 <div className="p-3 bg-gray-50 rounded-lg">
                                     <p className="text-xs text-gray-500 uppercase font-bold">Usuarios</p>
                                     <p className="text-lg font-semibold text-gray-900">
-                                        {session?.user?.plan === 'FREE' ? '5' : session?.user?.plan === 'MINI' ? '7' : '28'} Max
+                                        {(userProfile?.plan || session?.user?.plan) === 'FREE' ? '5' : (userProfile?.plan || session?.user?.plan) === 'MINI' ? '7' : '28'} Max
                                     </p>
                                 </div>
                                 <div className="p-3 bg-gray-50 rounded-lg">
                                     <p className="text-xs text-gray-500 uppercase font-bold">Cajas</p>
                                     <p className="text-lg font-semibold text-gray-900">
-                                        {session?.user?.plan === 'MEDIUM' ? '2' : '1'} Max
+                                        {(userProfile?.plan || session?.user?.plan) === 'MEDIUM' ? '2' : '1'} Max
                                     </p>
                                 </div>
                             </div>
@@ -190,7 +218,7 @@ export default function Dashboard() {
                                 Dispositivos Vinculados
                             </h3>
                             <p className="text-sm text-gray-500 mb-6">
-                                Tu plan {session?.user?.plan || 'FREE'} permite conectar {session?.user?.plan === 'FREE' ? '1 dispositivo' : 'múltiples dispositivos'}.
+                                Tu plan {userProfile?.plan || session?.user?.plan || 'FREE'} permite conectar {(userProfile?.plan || session?.user?.plan) === 'FREE' ? '1 dispositivo' : 'múltiples dispositivos'}.
                             </p>
 
                             {devices.length === 0 ? (
