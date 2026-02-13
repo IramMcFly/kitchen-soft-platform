@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import dbConnect from '@/lib/db';
 import User from '@/models/User';
+import { getPlanByPriceId } from '@/lib/plans';
 
 export async function POST(req: Request) {
     const body = await req.text();
@@ -80,13 +81,13 @@ export async function POST(req: Request) {
 
         // If the update is a cancellation (cancel_at_period_end = true), status might still be active
         // If the update involves a plan change, we need to map the new Price ID to a Plan Name
-        // Ideally, we'd have a mapping. For now, we'll try to get it from metadata if present on the subscription
-        // IF NOT present, we might be in trouble for upgrades. 
-        // Strategy: Check subscription.items.data[0].price.product metadata if possible? 
-        // For simplicity and safety, let's update status. If plan changed, we ideally need that info.
 
-        // Try to find the plan name from metadata on the subscription object itself
-        const plan = subscription.metadata?.plan;
+        // Get the price ID from the first item
+        const priceId = subscription.items.data[0].price.id;
+        const planFromPrice = getPlanByPriceId(priceId);
+
+        // Fallback: Try to find the plan name from metadata on the subscription object itself
+        const plan = planFromPrice || subscription.metadata?.plan;
 
         const updateData: any = {
             subscriptionStatus: subscription.status,

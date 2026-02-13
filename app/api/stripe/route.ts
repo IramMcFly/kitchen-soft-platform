@@ -1,17 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import { getToken } from 'next-auth/jwt';
-
-const PLANS = {
-    'MINI': {
-        name: 'Plan Mini',
-        amount: 10000, // $100.00 MXN
-    },
-    'MEDIUM': {
-        name: 'Plan Medium',
-        amount: 30000, // $300.00 MXN
-    }
-};
+import { PLANS } from '@/lib/plans';
 
 export async function POST(req: NextRequest) {
     try {
@@ -25,7 +15,7 @@ export async function POST(req: NextRequest) {
         const { plan } = body;
 
         if (!plan || !PLANS[plan as keyof typeof PLANS]) {
-            return new NextResponse('Invalid Plan', { status: 400 });
+            return NextResponse.json({ error: 'Invalid Plan' }, { status: 400 });
         }
 
         const planData = PLANS[plan as keyof typeof PLANS];
@@ -36,17 +26,7 @@ export async function POST(req: NextRequest) {
             line_items: [
                 {
                     quantity: 1,
-                    price_data: {
-                        currency: 'mxn',
-                        product_data: {
-                            name: `Kitchen Soft POS - ${planData.name}`,
-                            description: 'Suscripción Mensual',
-                        },
-                        unit_amount: planData.amount,
-                        recurring: {
-                            interval: 'month',
-                        },
-                    },
+                    price: planData.priceId,
                 },
             ],
             metadata: {

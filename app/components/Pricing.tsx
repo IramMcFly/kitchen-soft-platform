@@ -3,8 +3,8 @@
 import { Check, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
 
 const tiers = [
     {
@@ -63,7 +63,18 @@ const tiers = [
 export default function Pricing() {
     const { data: session } = useSession();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+
+    // Check for error param on mount
+    useEffect(() => {
+        const error = searchParams.get('error');
+        if (error === 'subscription_sync_issue') {
+            alert('⚠️ Tu suscripción ha sido reiniciada debido a un problema de sincronización con la plataforma de pagos. Por favor, selecciona tu plan nuevamente para reactivarla.');
+            // Optional: Remove param from URL without refresh
+            router.replace('/#pricing');
+        }
+    }, [searchParams, router]);
 
     const handleSubscription = async (planId: string) => {
         if (!session) {
@@ -78,6 +89,25 @@ export default function Pricing() {
 
         try {
             setLoadingPlan(planId);
+
+            // If user already has a paid plan, send them to the Portal to manage/switch plans
+            // instead of creating a new checkout session.
+            const hasPaidPlan = session.user?.plan && session.user.plan !== 'FREE';
+
+            if (hasPaidPlan) {
+                const response = await fetch('/api/stripe/portal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+
+                if (!response.ok) throw new Error('Error al conectar con portal');
+
+                const data = await response.json();
+                window.location.href = data.url;
+                return;
+            }
+
+            // Otherwise (FREE users), creates a new subscription checkout
             const response = await fetch('/api/stripe', {
                 method: 'POST',
                 headers: {
@@ -88,14 +118,14 @@ export default function Pricing() {
                 }),
             });
 
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-
             const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Network response was not ok');
+            }
             window.location.href = data.url;
         } catch (error) {
-            console.error('Error creating checkout session:', error);
+            console.error('Error processing request:', error);
             alert('Hubo un error al procesar tu solicitud. Por favor intenta de nuevo.');
         } finally {
             setLoadingPlan(null);
@@ -152,10 +182,10 @@ export default function Pricing() {
                                     disabled={isDisabled}
                                     aria-describedby={tier.name}
                                     className={`mt-6 w-full flex items-center justify-center rounded-md py-2 px-3 text-center text-sm font-semibold leading-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${isCurrentPlan
-                                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                            : tier.name === 'Plan Mini' || isUpgradeOption
-                                                ? 'bg-orange-600 text-white shadow-sm hover:bg-orange-500 focus-visible:outline-orange-600'
-                                                : 'bg-orange-50 text-orange-600 hover:bg-orange-100'
+                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                        : tier.name === 'Plan Mini' || isUpgradeOption
+                                            ? 'bg-orange-600 text-white shadow-sm hover:bg-orange-500 focus-visible:outline-orange-600'
+                                            : 'bg-orange-50 text-orange-600 hover:bg-orange-100'
                                         }`}
                                 >
                                     {loadingPlan === tier.id ? (
