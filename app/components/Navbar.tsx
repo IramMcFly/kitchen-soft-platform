@@ -36,6 +36,8 @@ export default function Navbar() {
                   onClick={() => setIsMenuOpen(!isMenuOpen)}
                   className="flex items-center gap-2 text-gray-700 hover:text-orange-600 font-medium focus:outline-none"
                 >
+                  <Link href="/dashboard" className="hidden md:block text-gray-700 hover:text-orange-600 font-medium mr-4">Dashboard</Link>
+                  <Link href="/dashboard/reports" className="hidden md:block text-gray-700 hover:text-orange-600 font-medium mr-4">Reportes</Link>
                   <span className="hidden sm:inline">Hola, {session.user?.name?.split(' ')[0]}</span>
                   <div className="h-8 w-8 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center">
                     <UserIcon className="h-5 w-5" />

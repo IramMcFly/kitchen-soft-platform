@@ -55,12 +55,21 @@ export async function GET(req: Request) {
         const session = await getServerSession(authOptions);
 
         if (!session || !session.user?.email) {
+            console.warn('Devices API: No session found');
             return NextResponse.json({ message: 'No autorizado' }, { status: 401 });
         }
 
         await dbConnect();
-        const user = await User.findOne({ email: session.user.email });
+        // Use regex for case insensitive match, similar to login
+        const emailRegex = new RegExp(`^${session.user.email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+        const user = await User.findOne({ email: { $regex: emailRegex } });
 
+        if (!user) {
+            console.warn('Devices API: User not found for email:', session.user.email);
+            return NextResponse.json({ devices: [] });
+        }
+
+        console.log('Devices API: Found devices for', user.email, 'Count:', user.devices?.length);
         return NextResponse.json({ devices: user.devices || [] });
 
     } catch (error: any) {

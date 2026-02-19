@@ -41,18 +41,23 @@ export async function POST(req: Request) {
         }
 
 
+        console.log('Login attempt:', { email, deviceId, deviceName });
+
         // Device Management Logic
         const existingDevice = user.devices.find((d: any) => d.deviceId === deviceId);
 
         if (existingDevice) {
+            console.log('Existing device found:', existingDevice);
             // Update last login
             existingDevice.lastLogin = new Date();
             existingDevice.name = deviceName || existingDevice.name; // Update name if provided
         } else {
+            console.log('Registering new device:', { deviceId, deviceName });
             // Check limits based on plan
             const deviceLimit = user.plan === 'FREE' ? 1 : 999;
 
             if (user.devices.length >= deviceLimit) {
+                console.warn('Device limit reached for user:', user.email);
                 return NextResponse.json(
                     { message: `Has alcanzado el límite de dispositivos para tu plan (${user.plan}). Desvincula un dispositivo para continuar.` },
                     { status: 403 }
@@ -68,6 +73,7 @@ export async function POST(req: Request) {
         }
 
         await user.save();
+        console.log('User saved with devices:', user.devices.length);
 
         // Generate JWT with jose
         const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET);
@@ -91,7 +97,8 @@ export async function POST(req: Request) {
                 email: user.email,
                 role: user.role,
                 plan: user.plan,
-                restaurantName: user.restaurantName
+                restaurantName: user.restaurantName,
+                devices: user.devices // Return devices for verification
             }
         });
 

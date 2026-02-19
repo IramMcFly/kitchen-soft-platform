@@ -22,8 +22,11 @@ export async function GET(req: Request) {
             const user = await User.findById(payload.userId);
 
             if (!user || user.isActive === false) {
+                console.warn('License check failed: User not found or inactive', payload.userId);
                 return NextResponse.json({ message: 'Licencia suspendida o usuario no encontrado' }, { status: 403 });
             }
+
+            console.log('License Check for user:', user.email, 'Plan:', user.plan);
 
             const PLANS_LIMITS: any = {
                 'FREE': {
