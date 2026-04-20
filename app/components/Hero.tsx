@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { Download, BookOpen, AlertTriangle, LayoutDashboard } from 'lucide-react'; // Added LayoutDashboard
-import { useSession } from 'next-auth/react';
+import { useAuth } from './AuthProvider';
 
 export default function Hero() {
-    const { data: session } = useSession();
+    const { isAuthenticated } = useAuth();
 
     return (
         <div className="relative bg-white overflow-hidden">
@@ -34,7 +34,7 @@ export default function Hero() {
                             </p>
                             <div className="mt-5 sm:mt-8 sm:flex sm:justify-center lg:justify-start gap-3">
                                 <div className="rounded-md shadow">
-                                    {session ? (
+                                    {isAuthenticated ? (
                                         <Link
                                             href="/dashboard"
                                             className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 md:py-4 md:text-lg transition-all transform hover:scale-105"
@@ -53,7 +53,7 @@ export default function Hero() {
                                 </div>
                             </div>
 
-                            {!session && (
+                            {!isAuthenticated && (
                                 <div className="mt-6 text-sm text-gray-500 bg-orange-50 p-4 rounded-lg border border-orange-100 max-w-lg lg:mr-auto sm:mx-auto lg:mx-0">
                                     <div className="flex items-center gap-2 font-medium text-orange-800 mb-1">
                                         <AlertTriangle className="h-5 w-5" />

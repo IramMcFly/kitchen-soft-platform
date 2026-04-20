@@ -1,13 +1,22 @@
 'use client';
 
-import { useSession } from 'next-auth/react';
 import Navbar from '../components/Navbar';
 import { useState, useEffect } from 'react';
-import { Download, Building2, User, Save, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Download, Building2, User, Save, Loader2, CheckCircle, AlertCircle, Database, Smartphone, Activity } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '../components/AuthProvider';
+
+type SystemOverview = {
+    currentPlan: string;
+    cloudSyncEnabled: boolean;
+    devicesCount: number;
+    totalSyncedRows: number;
+    lastSyncAt: string | null;
+    rowsByTable: Record<string, number>;
+};
 
 export default function Dashboard() {
-    const { data: session, update } = useSession();
+    const { user, status, refresh } = useAuth();
     const router = useRouter();
 
     const [formData, setFormData] = useState({
@@ -18,27 +27,11 @@ export default function Dashboard() {
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [userProfile, setUserProfile] = useState<any>(null);
+    const [systemOverview, setSystemOverview] = useState<SystemOverview | null>(null);
+    const [loadingSystemOverview, setLoadingSystemOverview] = useState(false);
+    const currentPlan = userProfile?.plan || user?.plan || 'FREE';
 
-    // Initialize form and fetch devices
-    useEffect(() => {
-        if (session?.user) {
-            fetchProfile();
-            fetchDevices();
-        }
-
-        // Check for success param and refresh session if needed
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('success') === 'true') {
-            // Force session update to get latest plan from DB
-            // We pass a dummy object to trigger the 'update' event in the JWT callback
-            update({ refresh: true }).then(() => {
-                router.replace('/dashboard'); // Remove query param
-                setMessage({ type: 'success', text: 'Plan actualizado correctamente!' });
-            });
-        }
-    }, [session]);
-
-    const fetchProfile = async () => {
+    async function fetchProfile() {
         try {
             const res = await fetch('/api/profile');
             if (res.ok) {
@@ -48,27 +41,13 @@ export default function Dashboard() {
                     name: data.user.name || '',
                     restaurantName: data.user.restaurantName || '',
                 });
-
-                // Sync session if plan differs
-                if (session?.user?.plan !== data.user.plan) {
-                    await update({
-                        ...session,
-                        user: {
-                            ...session?.user,
-                            plan: data.user.plan,
-                            name: data.user.name,
-                            restaurantName: data.user.restaurantName,
-                            role: data.user.role
-                        },
-                    });
-                }
             }
         } catch (error) {
             console.error('Error fetching profile', error);
         }
-    };
+    }
 
-    const fetchDevices = async () => {
+    async function fetchDevices() {
         try {
             const res = await fetch('/api/devices');
             if (res.ok) {
@@ -78,7 +57,63 @@ export default function Dashboard() {
         } catch (error) {
             console.error('Error fetching devices', error);
         }
-    };
+    }
+
+    async function fetchSystemOverview() {
+        if (currentPlan !== 'PRO') {
+            setSystemOverview(null);
+            return;
+        }
+
+        setLoadingSystemOverview(true);
+        try {
+            const res = await fetch('/api/reports/stats', { cache: 'no-store' });
+            if (res.ok) {
+                const data = await res.json();
+                setSystemOverview(data.system || null);
+            }
+        } catch (error) {
+            console.error('Error fetching system overview', error);
+        } finally {
+            setLoadingSystemOverview(false);
+        }
+    }
+
+    // Initialize profile/devices and handle auth redirect.
+    useEffect(() => {
+        if (status === 'unauthenticated') {
+            router.replace('/auth/login');
+            return;
+        }
+
+        if (status !== 'authenticated' || !user) {
+            return;
+        }
+
+        void fetchProfile();
+        void fetchDevices();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('success') === 'true') {
+            void refresh().then(() => {
+                router.replace('/dashboard');
+                setMessage({ type: 'success', text: 'Plan actualizado correctamente!' });
+            });
+        }
+    }, [refresh, router, status, user]);
+
+    useEffect(() => {
+        if (status !== 'authenticated') {
+            return;
+        }
+
+        if (currentPlan !== 'PRO') {
+            setSystemOverview(null);
+            return;
+        }
+
+        void fetchSystemOverview();
+    }, [currentPlan, status]);
 
     const handleUnlink = async (deviceId: string) => {
         if (!confirm('¿Estás seguro de que quieres desvincular este dispositivo?')) return;
@@ -131,6 +166,19 @@ export default function Dashboard() {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
+    const formatDateTime = (value?: string | null) => {
+        if (!value) {
+            return 'Sin actividad reciente';
+        }
+
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return 'Sin actividad reciente';
+        }
+
+        return date.toLocaleString();
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
@@ -149,15 +197,7 @@ export default function Dashboard() {
                 throw new Error(data.message || 'Error al actualizar');
             }
 
-            // Update NextAuth session client-side
-            await update({
-                ...session,
-                user: {
-                    ...session?.user,
-                    name: formData.name,
-                    restaurantName: formData.restaurantName,
-                },
-            });
+            await refresh();
 
             setMessage({ type: 'success', text: 'Perfil actualizado correctamente' });
 
@@ -171,6 +211,18 @@ export default function Dashboard() {
         }
     };
 
+    if (status === 'loading') {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-orange-600" />
+            </div>
+        );
+    }
+
+    if (status === 'unauthenticated') {
+        return null;
+    }
+
     return (
         <div className="min-h-screen bg-gray-50">
             <Navbar />
@@ -178,10 +230,10 @@ export default function Dashboard() {
             <div className="max-w-7xl mx-auto py-10 px-4 sm:px-6 lg:px-8">
                 <header className="mb-8">
                     <h1 className="text-3xl font-bold text-gray-900">
-                        {session?.user?.restaurantName ? `Dashboard de ${session.user.restaurantName}` : 'Tu Dashboard'}
+                        {user?.restaurantName ? `Dashboard de ${user.restaurantName}` : 'Tu Dashboard'}
                     </h1>
                     <p className="mt-2 text-gray-600">
-                        Gestiona tu cuenta, dispositivos y licencia.
+                        Gestiona tu cuenta, dispositivos y plan de nube.
                     </p>
                 </header>
 
@@ -195,15 +247,15 @@ export default function Dashboard() {
                             <div className="flex items-center justify-between bg-orange-50 p-4 rounded-lg border border-orange-100">
                                 <div>
                                     <p className="text-sm font-medium text-orange-800">
-                                        Estás suscrito al plan <span className="font-bold text-lg uppercase">{userProfile?.plan || session?.user?.plan || 'FREE'}</span>
+                                        Estás suscrito al plan <span className="font-bold text-lg uppercase">{currentPlan}</span>
                                     </p>
                                     <p className="text-sm text-gray-600 mt-1">
-                                        {(userProfile?.plan || session?.user?.plan) === 'MEDIUM'
-                                            ? 'Tienes acceso a todas las funcionalidades y límites máximos.'
-                                            : 'Actualiza tu plan para obtener más mesas, usuarios y dispositivos.'}
+                                        {currentPlan === 'PRO'
+                                            ? 'Tu cuenta tiene sincronización cloud completa y respaldos automáticos al cierre de caja.'
+                                            : 'Actualmente operas en modo local. Cambia a PRO para habilitar nube multi-tenant.'}
                                     </p>
                                 </div>
-                                {(userProfile?.plan || session?.user?.plan) !== 'FREE' ? (
+                                {currentPlan !== 'FREE' ? (
                                     <button
                                         onClick={handlePortal}
                                         disabled={isLoading}
@@ -225,24 +277,94 @@ export default function Dashboard() {
                                 <div className="p-3 bg-gray-50 rounded-lg">
                                     <p className="text-xs text-gray-500 uppercase font-bold">Mesas</p>
                                     <p className="text-lg font-semibold text-gray-900">
-                                        {(userProfile?.plan || session?.user?.plan) === 'FREE' ? '4' : (userProfile?.plan || session?.user?.plan) === 'MINI' ? '8' : '20'} Max
+                                        Ilimitadas
                                     </p>
                                 </div>
                                 <div className="p-3 bg-gray-50 rounded-lg">
                                     <p className="text-xs text-gray-500 uppercase font-bold">Usuarios</p>
                                     <p className="text-lg font-semibold text-gray-900">
-                                        {(userProfile?.plan || session?.user?.plan) === 'FREE' ? '5' : (userProfile?.plan || session?.user?.plan) === 'MINI' ? '7' : '28'} Max
+                                        Ilimitados
                                     </p>
                                 </div>
                                 <div className="p-3 bg-gray-50 rounded-lg">
-                                    <p className="text-xs text-gray-500 uppercase font-bold">Cajas</p>
+                                    <p className="text-xs text-gray-500 uppercase font-bold">Respaldo Cloud</p>
                                     <p className="text-lg font-semibold text-gray-900">
-                                        {(userProfile?.plan || session?.user?.plan) === 'MEDIUM' ? '2' : '1'} Max
+                                        {currentPlan === 'PRO' ? 'Habilitado' : 'Deshabilitado'}
                                     </p>
                                 </div>
                             </div>
                         </div>
                     </div>
+
+                    {currentPlan === 'PRO' && (
+                        <div className="bg-white overflow-hidden shadow rounded-lg border border-gray-100 lg:col-span-2">
+                            <div className="px-4 py-5 sm:p-6">
+                                <h3 className="text-lg leading-6 font-medium text-gray-900 mb-2">
+                                    Información Completa del Sistema
+                                </h3>
+                                <p className="text-sm text-gray-500 mb-6">
+                                    Vista operativa de tu estado en nube para monitoreo administrativo en tiempo real.
+                                </p>
+
+                                {loadingSystemOverview ? (
+                                    <div className="py-6 flex items-center justify-center text-gray-500">
+                                        <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                                        Cargando información del sistema...
+                                    </div>
+                                ) : !systemOverview ? (
+                                    <div className="bg-amber-50 border border-amber-200 rounded-md p-4 text-sm text-amber-800">
+                                        No se pudo cargar el resumen del sistema. Intenta recargar la página.
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                            <div className="rounded-lg border border-gray-200 p-4 bg-gray-50">
+                                                <div className="flex items-center gap-2 text-xs uppercase font-bold text-gray-500">
+                                                    <Database className="h-4 w-4" />
+                                                    Registros Sincronizados
+                                                </div>
+                                                <p className="mt-2 text-2xl font-semibold text-gray-900">
+                                                    {systemOverview.totalSyncedRows.toLocaleString()}
+                                                </p>
+                                            </div>
+                                            <div className="rounded-lg border border-gray-200 p-4 bg-gray-50">
+                                                <div className="flex items-center gap-2 text-xs uppercase font-bold text-gray-500">
+                                                    <Smartphone className="h-4 w-4" />
+                                                    Dispositivos Vinculados
+                                                </div>
+                                                <p className="mt-2 text-2xl font-semibold text-gray-900">
+                                                    {Number(systemOverview.devicesCount || 0)}
+                                                </p>
+                                            </div>
+                                            <div className="rounded-lg border border-gray-200 p-4 bg-gray-50">
+                                                <div className="flex items-center gap-2 text-xs uppercase font-bold text-gray-500">
+                                                    <Activity className="h-4 w-4" />
+                                                    Última Sincronización
+                                                </div>
+                                                <p className="mt-2 text-sm font-semibold text-gray-900">
+                                                    {formatDateTime(systemOverview.lastSyncAt)}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-lg border border-gray-200 overflow-hidden">
+                                            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 text-sm font-semibold text-gray-700">
+                                                Desglose por módulos
+                                            </div>
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-gray-200">
+                                                {Object.entries(systemOverview.rowsByTable || {}).map(([tableName, value]) => (
+                                                    <div key={tableName} className="bg-white px-4 py-3">
+                                                        <p className="text-xs uppercase text-gray-500 font-medium">{tableName}</p>
+                                                        <p className="text-lg font-semibold text-gray-900">{Number(value || 0).toLocaleString()}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Device Management Section */}
                     <div className="bg-white overflow-hidden shadow rounded-lg border border-gray-100 lg:col-span-2">
@@ -251,7 +373,7 @@ export default function Dashboard() {
                                 Dispositivos Vinculados
                             </h3>
                             <p className="text-sm text-gray-500 mb-6">
-                                Tu plan {userProfile?.plan || session?.user?.plan || 'FREE'} permite conectar {(userProfile?.plan || session?.user?.plan) === 'FREE' ? '1 dispositivo' : 'múltiples dispositivos'}.
+                                Tu plan {currentPlan} permite conectar {currentPlan === 'FREE' ? '1 dispositivo' : 'múltiples dispositivos'}.
                             </p>
 
                             {devices.length === 0 ? (
@@ -395,7 +517,7 @@ export default function Dashboard() {
                                         <input
                                             type="text"
                                             disabled
-                                            value={session?.user?.email || ''}
+                                            value={user?.email || ''}
                                             className="bg-gray-50 block w-full sm:text-sm border-gray-300 rounded-md py-2 text-gray-500 cursor-not-allowed px-3"
                                         />
                                         <p className="mt-1 text-xs text-gray-400">El correo no se puede cambiar por seguridad.</p>

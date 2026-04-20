@@ -1,39 +1,27 @@
-import { withAuth } from "next-auth/middleware";
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-export default withAuth(
-    function middleware(req) {
-        const token = req.nextauth.token;
-        const isAuth = !!token;
-        const isAuthPage = req.nextUrl.pathname.startsWith("/auth");
-        const isAdminPage = req.nextUrl.pathname.startsWith("/admin");
-        const isDashboardPage = req.nextUrl.pathname.startsWith("/dashboard");
+function hasSessionToken(req: NextRequest) {
+    return Boolean(req.cookies.get('ksp_token')?.value);
+}
 
-        if (isAuthPage) {
-            if (isAuth) {
-                return NextResponse.redirect(new URL("/dashboard", req.url));
-            }
-            return null;
-        }
+export function proxy(req: NextRequest) {
+    const pathname = req.nextUrl.pathname;
+    const isAuthPage = pathname.startsWith('/auth/');
+    const isProtectedPage = pathname.startsWith('/dashboard') || pathname.startsWith('/admin');
+    const isAuthenticated = hasSessionToken(req);
 
-        if (isAdminPage && token?.role !== "ADMIN") {
-            return NextResponse.redirect(new URL("/dashboard", req.url));
-        }
-
-        // Optional: Redirect ADMIN to /admin if they try to go to /dashboard (if you want strict separation)
-        // if (isDashboardPage && token?.role === "ADMIN") {
-        //   return NextResponse.redirect(new URL("/admin", req.url));
-        // }
-
-        return null;
-    },
-    {
-        callbacks: {
-            authorized: ({ token }) => !!token,
-        },
+    if (isAuthPage && isAuthenticated) {
+        return NextResponse.redirect(new URL('/dashboard', req.url));
     }
-);
+
+    if (isProtectedPage && !isAuthenticated) {
+        return NextResponse.redirect(new URL('/auth/login', req.url));
+    }
+
+    return NextResponse.next();
+}
 
 export const config = {
-    matcher: ["/dashboard/:path*", "/admin/:path*"],
+    matcher: ['/dashboard/:path*', '/admin/:path*', '/auth/:path*'],
 };

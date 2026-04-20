@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/db';
-import User from '@/models/User';
 import { registerSchema } from '@/lib/validations';
+import { createSupabaseAdminClient, isSupabaseConfigured } from '@/lib/supabase';
+import { upsertCloudProfile } from '@/lib/cloud-profile';
 
 export async function POST(req: Request) {
     try {
@@ -18,29 +18,63 @@ export async function POST(req: Request) {
 
         const { name, email, password, restaurantName } = validation.data;
 
-        await dbConnect();
+        if (isSupabaseConfigured()) {
+            const admin = createSupabaseAdminClient();
 
-        // Check if user already exists
-        const existingUser = await User.findOne({ email });
+            if (!admin) {
+                return NextResponse.json(
+                    { message: 'Supabase no está configurado correctamente' },
+                    { status: 500 }
+                );
+            }
 
-        if (existingUser) {
+            const { data, error } = await admin.auth.admin.createUser({
+                email,
+                password,
+                email_confirm: true,
+                user_metadata: {
+                    name,
+                    restaurantName,
+                    role: 'OWNER',
+                    plan: 'FREE',
+                },
+            });
+
+            if (error || !data.user) {
+                const alreadyExists = /already|registered|exists/i.test(error?.message || '');
+                return NextResponse.json(
+                    { message: alreadyExists ? 'El correo electrónico ya está registrado' : (error?.message || 'No se pudo crear la cuenta') },
+                    { status: alreadyExists ? 400 : 500 }
+                );
+            }
+
+            const profile = await upsertCloudProfile({
+                id: data.user.id,
+                email,
+                name,
+                restaurantName,
+                plan: 'FREE',
+                role: 'OWNER',
+                isActive: true,
+                cloudSyncEnabled: false,
+            });
+
             return NextResponse.json(
-                { message: 'El correo electrónico ya está registrado' },
-                { status: 400 }
+                {
+                    message: 'Usuario registrado exitosamente',
+                    user: {
+                        id: profile.id,
+                        name: profile.name,
+                        email: profile.email,
+                    }
+                },
+                { status: 201 }
             );
         }
 
-        // Create new user (password hashing is handled in the model pre-save hook)
-        const user = await User.create({
-            name,
-            email,
-            password,
-            restaurantName,
-        });
-
         return NextResponse.json(
-            { message: 'Usuario registrado exitosamente', user: { id: user._id, name: user.name, email: user.email } },
-            { status: 201 }
+            { message: 'Supabase no está configurado correctamente' },
+            { status: 503 }
         );
     } catch (error: any) {
         console.error('Registration Error:', error);

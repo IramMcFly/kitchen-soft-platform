@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../auth/[...nextauth]/route';
-import dbConnect from '@/lib/db';
-import User from '@/models/User';
+import { authenticateCloudToken, getCloudTokenFromRequest } from '@/lib/cloud-auth';
+import { deleteCloudDevice, listCloudDevices } from '@/lib/cloud-profile';
 
 export async function DELETE(req: Request) {
     try {
-        const session = await getServerSession(authOptions);
+        const token = getCloudTokenFromRequest(req);
+        const identity = token ? await authenticateCloudToken(token) : null;
 
-        if (!session || !session.user?.email) {
+        if (!identity) {
             return NextResponse.json({ message: 'No autorizado' }, { status: 401 });
         }
 
@@ -18,27 +17,17 @@ export async function DELETE(req: Request) {
             return NextResponse.json({ message: 'ID de dispositivo requerido' }, { status: 400 });
         }
 
-        await dbConnect();
+        const removed = await deleteCloudDevice(identity.userId, deviceId);
 
-        const user = await User.findOne({ email: session.user.email });
-
-        if (!user) {
-            return NextResponse.json({ message: 'Usuario no encontrado' }, { status: 404 });
-        }
-
-        // Filter out the device to delete
-        const initialCount = user.devices.length;
-        user.devices = user.devices.filter((d: any) => d.deviceId !== deviceId);
-
-        if (user.devices.length === initialCount) {
+        if (!removed) {
             return NextResponse.json({ message: 'Dispositivo no encontrado' }, { status: 404 });
         }
 
-        await user.save();
+        const devices = await listCloudDevices(identity.userId);
 
         return NextResponse.json({
             message: 'Dispositivo desvinculado exitosamente',
-            devices: user.devices
+            devices,
         });
 
     } catch (error: any) {
@@ -52,25 +41,15 @@ export async function DELETE(req: Request) {
 
 export async function GET(req: Request) {
     try {
-        const session = await getServerSession(authOptions);
+        const token = getCloudTokenFromRequest(req);
+        const identity = token ? await authenticateCloudToken(token) : null;
 
-        if (!session || !session.user?.email) {
-            console.warn('Devices API: No session found');
+        if (!identity) {
             return NextResponse.json({ message: 'No autorizado' }, { status: 401 });
         }
 
-        await dbConnect();
-        // Use regex for case insensitive match, similar to login
-        const emailRegex = new RegExp(`^${session.user.email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
-        const user = await User.findOne({ email: { $regex: emailRegex } });
-
-        if (!user) {
-            console.warn('Devices API: User not found for email:', session.user.email);
-            return NextResponse.json({ devices: [] });
-        }
-
-        console.log('Devices API: Found devices for', user.email, 'Count:', user.devices?.length);
-        return NextResponse.json({ devices: user.devices || [] });
+        const devices = await listCloudDevices(identity.userId);
+        return NextResponse.json({ devices });
 
     } catch (error: any) {
         return NextResponse.json(

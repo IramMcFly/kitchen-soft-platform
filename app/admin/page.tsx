@@ -1,29 +1,61 @@
 'use client';
 
-import { useSession } from 'next-auth/react';
 import Navbar from '../components/Navbar';
-import { ShieldAlert, Search, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { ShieldAlert, Search, Loader2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '../components/AuthProvider';
 
 export default function AdminDashboard() {
-    const { data: session } = useSession();
+    const { user, status } = useAuth();
+    const router = useRouter();
     const [users, setUsers] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [updatingId, setUpdatingId] = useState<string | null>(null);
+    const [updatingPlanId, setUpdatingPlanId] = useState<string | null>(null);
+    const [planDrafts, setPlanDrafts] = useState<Record<string, string>>({});
+
+    const planOptions = ['FREE', 'PRO'];
 
     useEffect(() => {
-        fetchUsers();
-    }, [searchTerm]);
+        if (status === 'unauthenticated') {
+            router.replace('/auth/login');
+            return;
+        }
+
+        if (status === 'authenticated' && user?.role !== 'ADMIN') {
+            router.replace('/dashboard');
+            return;
+        }
+
+        if (status === 'authenticated' && user?.role === 'ADMIN') {
+            void fetchUsers();
+        }
+    }, [router, searchTerm, status, user?.role]);
 
     // Debounce search could be added here, but simple effect is fine for now
     const fetchUsers = async () => {
         try {
             const query = searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : '';
             const res = await fetch(`/api/admin/users${query}`);
+            if (res.status === 401) {
+                router.replace('/auth/login');
+                return;
+            }
+            if (res.status === 403) {
+                router.replace('/dashboard');
+                return;
+            }
             if (res.ok) {
                 const data = await res.json();
-                setUsers(data.users);
+                const nextUsers = data.users || [];
+                setUsers(nextUsers);
+                setPlanDrafts(
+                    Object.fromEntries(
+                        nextUsers.map((item: any) => [item._id, String(item.plan || 'FREE')])
+                    )
+                );
             }
         } catch (error) {
             console.error('Error fetching users', error);
@@ -43,7 +75,9 @@ export default function AdminDashboard() {
 
             if (res.ok) {
                 // Optimistic update
-                setUsers(users.map(u => u._id === userId ? { ...u, isActive: !currentStatus } : u));
+                setUsers((currentUsers) =>
+                    currentUsers.map((u) => (u._id === userId ? { ...u, isActive: !currentStatus } : u))
+                );
             }
         } catch (error) {
             console.error('Error toggling status', error);
@@ -52,6 +86,61 @@ export default function AdminDashboard() {
             setUpdatingId(null);
         }
     };
+
+    const updatePlan = async (userId: string) => {
+        const selectedPlan = planDrafts[userId];
+
+        if (!selectedPlan) {
+            return;
+        }
+
+        setUpdatingPlanId(userId);
+        try {
+            const res = await fetch(`/api/admin/users/${userId}/plan`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plan: selectedPlan }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data?.message || 'No se pudo actualizar el plan');
+            }
+
+            const persistedPlan = String(data?.user?.plan || selectedPlan);
+
+            setUsers((currentUsers) =>
+                currentUsers.map((item) =>
+                    item._id === userId
+                        ? {
+                            ...item,
+                            plan: persistedPlan,
+                        }
+                        : item
+                )
+            );
+
+            setPlanDrafts((current) => ({ ...current, [userId]: persistedPlan }));
+        } catch (error: any) {
+            console.error('Error updating plan', error);
+            alert(error?.message || 'Error al actualizar el plan');
+        } finally {
+            setUpdatingPlanId(null);
+        }
+    };
+
+    if (status === 'loading') {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-orange-600" />
+            </div>
+        );
+    }
+
+    if (status === 'unauthenticated' || user?.role !== 'ADMIN') {
+        return null;
+    }
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -131,6 +220,38 @@ export default function AdminDashboard() {
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <div className="text-sm text-gray-900">{user.plan}</div>
                                                     <div className="text-xs text-gray-500">{user.devices?.length || 0} dispositivos</div>
+                                                    <div className="text-xs text-gray-500">
+                                                        {user.plan === 'FREE' ? 'Solo local (sin nube)' : 'Respaldo y sincronización en nube habilitados'}
+                                                    </div>
+                                                    <div className="mt-2 flex items-center gap-2">
+                                                        <select
+                                                            value={planDrafts[user._id] || user.plan}
+                                                            onChange={(e) =>
+                                                                setPlanDrafts((current) => ({
+                                                                    ...current,
+                                                                    [user._id]: e.target.value,
+                                                                }))
+                                                            }
+                                                            className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 focus:border-red-500 focus:outline-none"
+                                                            disabled={updatingPlanId === user._id}
+                                                        >
+                                                            {planOptions.map((plan) => (
+                                                                <option key={plan} value={plan}>
+                                                                    {plan}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        <button
+                                                            onClick={() => updatePlan(user._id)}
+                                                            disabled={
+                                                                updatingPlanId === user._id ||
+                                                                (planDrafts[user._id] || user.plan) === user.plan
+                                                            }
+                                                            className="rounded-md bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                                                        >
+                                                            {updatingPlanId === user._id ? 'Guardando...' : 'Guardar plan'}
+                                                        </button>
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
@@ -140,7 +261,7 @@ export default function AdminDashboard() {
                                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                     <button
                                                         onClick={() => toggleStatus(user._id, user.isActive)}
-                                                        disabled={updatingId === user._id || user.role === 'ADMIN'}
+                                                        disabled={updatingId === user._id || updatingPlanId === user._id || user.role === 'ADMIN'}
                                                         className={`relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 ${user.isActive ? 'bg-green-600' : 'bg-gray-200'
                                                             } ${user.role === 'ADMIN' ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                     >

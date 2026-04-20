@@ -1,34 +1,38 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../auth/[...nextauth]/route';
-import dbConnect from '@/lib/db';
-import User from '@/models/User';
+import { authenticateCloudToken, getCloudTokenFromRequest } from '@/lib/cloud-auth';
 import { profileUpdateSchema } from '@/lib/validations';
+import {
+    getCloudProfileById,
+    updateCloudProfileById,
+} from '@/lib/cloud-profile';
+import { getPlanCapabilities } from '@/lib/cloud-plan';
 
 export async function GET(req: Request) {
     try {
-        const session = await getServerSession(authOptions);
+        const token = getCloudTokenFromRequest(req);
+        const identity = token ? await authenticateCloudToken(token) : null;
 
-        if (!session || !session.user?.email) {
+        if (!identity) {
             return NextResponse.json({ message: 'No autorizado' }, { status: 401 });
         }
 
-        await dbConnect();
-
-        const user = await User.findOne({ email: session.user.email });
-
-        if (!user) {
-            return NextResponse.json({ message: 'Usuario no encontrado' }, { status: 404 });
+        const profile = await getCloudProfileById(identity.userId);
+        if (!profile) {
+            return NextResponse.json({ message: 'Perfil no encontrado' }, { status: 404 });
         }
+
+        const capabilities = getPlanCapabilities(profile.plan);
 
         return NextResponse.json(
             {
                 user: {
-                    name: user.name,
-                    restaurantName: user.restaurantName,
-                    email: user.email,
-                    plan: user.plan,
-                    role: user.role
+                    id: profile.id,
+                    name: profile.name,
+                    restaurantName: profile.restaurant_name,
+                    email: profile.email,
+                    plan: profile.plan,
+                    role: profile.role,
+                    cloudSyncEnabled: profile.cloud_sync_enabled ?? capabilities.cloudSyncEnabled,
                 }
             },
             { status: 200 }
@@ -45,9 +49,10 @@ export async function GET(req: Request) {
 
 export async function PUT(req: Request) {
     try {
-        const session = await getServerSession(authOptions);
+        const token = getCloudTokenFromRequest(req);
+        const identity = token ? await authenticateCloudToken(token) : null;
 
-        if (!session || !session.user?.email) {
+        if (!identity) {
             return NextResponse.json({ message: 'No autorizado' }, { status: 401 });
         }
 
@@ -62,25 +67,24 @@ export async function PUT(req: Request) {
         }
 
         const { name, restaurantName } = validation.data;
+        const updatedProfile = await updateCloudProfileById(identity.userId, {
+            name,
+            restaurantName,
+        });
 
-        await dbConnect();
-
-        const updatedUser = await User.findOneAndUpdate(
-            { email: session.user.email },
-            { name, restaurantName },
-            { new: true }
-        );
-
-        if (!updatedUser) {
-            return NextResponse.json({ message: 'Usuario no encontrado' }, { status: 404 });
-        }
+        const capabilities = getPlanCapabilities(updatedProfile.plan);
 
         return NextResponse.json(
             {
                 message: 'Perfil actualizado exitosamente',
                 user: {
-                    name: updatedUser.name,
-                    restaurantName: updatedUser.restaurantName
+                    id: updatedProfile.id,
+                    name: updatedProfile.name,
+                    restaurantName: updatedProfile.restaurant_name,
+                    email: updatedProfile.email,
+                    plan: updatedProfile.plan,
+                    role: updatedProfile.role,
+                    cloudSyncEnabled: updatedProfile.cloud_sync_enabled ?? capabilities.cloudSyncEnabled,
                 }
             },
             { status: 200 }

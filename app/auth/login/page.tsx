@@ -1,16 +1,23 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { signIn } from 'next-auth/react';
 import { Mail, Lock, LogIn, Loader2, AlertCircle } from 'lucide-react';
+import { useAuth } from '../../components/AuthProvider';
 
 export default function Login() {
     const router = useRouter();
+    const { login, status, isAuthenticated } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (status === 'authenticated' && isAuthenticated) {
+            router.replace('/dashboard');
+        }
+    }, [isAuthenticated, router, status]);
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -22,21 +29,17 @@ export default function Login() {
         const password = formData.get('password') as string;
 
         try {
-            const result = await signIn('credentials', {
-                redirect: false,
-                email,
-                password,
-            });
+            const result = await login(email, password);
 
-            if (result?.error) {
-                setError('Correo o contraseña incorrectos');
-                setIsLoading(false);
+            if (!result.success) {
+                setError(result.message || 'Correo o contraseña incorrectos');
             } else {
                 router.push('/dashboard');
                 router.refresh();
             }
-        } catch (err) {
+        } catch {
             setError('Ocurrió un error al iniciar sesión');
+        } finally {
             setIsLoading(false);
         }
     };

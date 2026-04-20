@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { authenticateCloudToken, getCloudTokenFromRequest } from '@/lib/cloud-auth';
 import { updateCloudProfileById } from '@/lib/cloud-profile';
+import { getPlanCapabilities, normalizeCloudPlan } from '@/lib/cloud-plan';
 
 export async function PATCH(
     req: Request,
-    { params }: { params: Promise<{ id: string }> } // Params are now a Promise in Next.js 15+
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const token = getCloudTokenFromRequest(req);
@@ -20,25 +21,34 @@ export async function PATCH(
 
         const resolvedParams = await params;
         const { id } = resolvedParams;
-        const { isActive } = await req.json();
+        const { plan } = await req.json();
 
-        if (typeof isActive !== 'boolean') {
-            return NextResponse.json({ message: 'Estado inválido' }, { status: 400 });
+        if (!plan || typeof plan !== 'string') {
+            return NextResponse.json({ message: 'Plan inválido' }, { status: 400 });
         }
 
-        const updated = await updateCloudProfileById(id, { isActive });
+        const normalizedPlan = normalizeCloudPlan(plan);
+        const capabilities = getPlanCapabilities(normalizedPlan);
 
-        return NextResponse.json({
-            message: `Usuario ${updated.is_active ? 'activado' : 'desactivado'} correctamente`,
-            user: { id: updated.id, isActive: updated.is_active }
+        const updated = await updateCloudProfileById(id, {
+            plan: normalizedPlan,
+            cloudSyncEnabled: capabilities.cloudSyncEnabled,
         });
 
+        return NextResponse.json({
+            message: `Plan actualizado a ${normalizedPlan}`,
+            user: {
+                id: updated.id,
+                plan: updated.plan,
+                cloudSyncEnabled: updated.cloud_sync_enabled,
+            },
+        });
     } catch (error: any) {
         if (String(error?.message || '').toLowerCase().includes('not found')) {
             return NextResponse.json({ message: 'Usuario no encontrado' }, { status: 404 });
         }
 
-        console.error('Admin Update Status Error:', error);
+        console.error('Admin Update Plan Error:', error);
         return NextResponse.json(
             { message: 'Error interno del servidor' },
             { status: 500 }

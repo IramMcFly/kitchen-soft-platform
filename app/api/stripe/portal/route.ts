@@ -1,57 +1,52 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { stripe } from '@/lib/stripe';
-import { getToken } from 'next-auth/jwt';
-import dbConnect from '@/lib/db';
-import User from '@/models/User';
+import { getStripeClient } from '@/lib/stripe';
+import { authenticateCloudToken, getCloudTokenFromRequest } from '@/lib/cloud-auth';
+import { getCloudProfileById, updateCloudProfileById } from '@/lib/cloud-profile';
 
 export async function POST(req: NextRequest) {
-    let token;
     try {
-        token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+        const stripe = getStripeClient();
+        const token = getCloudTokenFromRequest(req);
+        const identity = token ? await authenticateCloudToken(token) : null;
 
-        if (!token) {
+        if (!identity) {
             return new NextResponse('Unauthorized', { status: 401 });
         }
 
-        await dbConnect();
-        const user = await User.findById(token.id);
-
-        if (!user || !user.stripeCustomerId) {
+        const profile = await getCloudProfileById(identity.userId);
+        if (!profile || !profile.stripe_customer_id) {
             return NextResponse.json({ error: 'No Stripe customer found' }, { status: 400 });
         }
 
-        const session = await stripe.billingPortal.sessions.create({
-            customer: user.stripeCustomerId,
-            return_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`,
-        });
+        try {
+            const session = await stripe.billingPortal.sessions.create({
+                customer: profile.stripe_customer_id,
+                return_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`,
+            });
 
-        return NextResponse.json({ url: session.url });
-
-    } catch (error: any) {
-        console.log('[STRIPE_PORTAL_POST]', error);
-
-        // Handle case where Customer ID exists in DB but not in Stripe (e.g. deleted in dashboard or env mismatch)
-        if (error?.code === 'resource_missing' && error?.param === 'customer' && token?.id) {
-            try {
-                // Reset user data so they can re-subscribe
-                await dbConnect();
-                // Perform a hard reset of subscription fields
-                await User.findByIdAndUpdate(token.id, {
-                    $unset: {
-                        stripeCustomerId: 1,
-                        subscriptionId: 1,
-                        subscriptionStatus: 1
-                    },
-                    $set: { plan: 'FREE' }
+            return NextResponse.json({ url: session.url });
+        } catch (error: any) {
+            if (error?.code === 'resource_missing' && error?.param === 'customer') {
+                await updateCloudProfileById(identity.userId, {
+                    plan: 'FREE',
+                    cloudSyncEnabled: false,
+                    stripeCustomerId: null,
+                    stripeSubscriptionId: null,
+                    stripeSubscriptionStatus: null,
                 });
 
-                // Return a redirect URL to pricing so the frontend handles it gracefully
                 return NextResponse.json({ url: '/#pricing?error=subscription_sync_issue' });
-            } catch (dbError) {
-                console.error('Error reseting user data:', dbError);
             }
+
+            throw error;
         }
 
+    } catch (error: any) {
+        if (error?.message === 'STRIPE_SECRET_KEY is not configured') {
+            return NextResponse.json({ error: 'Stripe no está configurado' }, { status: 503 });
+        }
+
+        console.log('[STRIPE_PORTAL_POST]', error);
         return new NextResponse('Internal Error', { status: 500 });
     }
 }

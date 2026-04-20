@@ -4,11 +4,12 @@ import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { signIn } from 'next-auth/react';
 import { User, Mail, Lock, ArrowRight, Loader2, AlertCircle, Store } from 'lucide-react';
+import { useAuth } from '../../components/AuthProvider';
 
 export default function Register() {
     const router = useRouter();
+    const { login } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -37,13 +38,9 @@ export default function Register() {
             }
 
             // Automatically sign in the user after registration
-            const result = await signIn('credentials', {
-                redirect: false,
-                email,
-                password,
-            });
+            const result = await login(email, password);
 
-            if (result?.error) {
+            if (!result.success) {
                 // Should not happen if registration was successful
                 router.push('/auth/login');
             } else {

@@ -2,12 +2,12 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useSession, signOut } from 'next-auth/react';
 import { Menu, User as UserIcon, LogOut, Loader2 } from 'lucide-react';
 import { useState } from 'react';
+import { useAuth } from './AuthProvider';
 
 export default function Navbar() {
-  const { data: session, status } = useSession();
+  const { user, status, isAuthenticated, logout } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
@@ -30,7 +30,7 @@ export default function Navbar() {
           <div className="flex items-center gap-4">
             {status === 'loading' ? (
               <div className="h-8 w-20 bg-gray-100 animate-pulse rounded"></div>
-            ) : session ? (
+            ) : isAuthenticated ? (
               <div className="relative">
                 <button
                   onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -38,7 +38,7 @@ export default function Navbar() {
                 >
                   <Link href="/dashboard" className="hidden md:block text-gray-700 hover:text-orange-600 font-medium mr-4">Dashboard</Link>
                   <Link href="/dashboard/reports" className="hidden md:block text-gray-700 hover:text-orange-600 font-medium mr-4">Reportes</Link>
-                  <span className="hidden sm:inline">Hola, {session.user?.name?.split(' ')[0]}</span>
+                  <span className="hidden sm:inline">Hola, {user?.name?.split(' ')[0]}</span>
                   <div className="h-8 w-8 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center">
                     <UserIcon className="h-5 w-5" />
                   </div>
@@ -52,12 +52,12 @@ export default function Navbar() {
                     ></div>
                     <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 border border-gray-100 z-20">
                       <div className="px-4 py-2 border-b border-gray-100">
-                        <p className="text-sm font-medium text-gray-900">{session.user?.name}</p>
-                        <p className="text-xs text-gray-500 truncate">{session.user?.email}</p>
-                        <p className="text-xs text-orange-600 font-bold mt-1">PLAN {session.user?.plan || 'FREE'}</p>
+                        <p className="text-sm font-medium text-gray-900">{user?.name}</p>
+                        <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                        <p className="text-xs text-orange-600 font-bold mt-1">PLAN {user?.plan || 'FREE'}</p>
                       </div>
                       <button
-                        onClick={() => signOut()}
+                        onClick={() => void logout()}
                         className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                       >
                         <LogOut className="h-4 w-4" />

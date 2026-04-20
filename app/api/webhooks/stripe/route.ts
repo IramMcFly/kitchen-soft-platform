@@ -1,11 +1,52 @@
 import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { stripe } from '@/lib/stripe';
-import dbConnect from '@/lib/db';
-import User from '@/models/User';
+import { getStripeClient } from '@/lib/stripe';
 import { getPlanByPriceId } from '@/lib/plans';
+import { getPlanCapabilities, normalizeCloudPlan } from '@/lib/cloud-plan';
+import {
+    getCloudProfileByStripeCustomerId,
+    updateCloudProfileById,
+    upsertCloudProfile,
+} from '@/lib/cloud-profile';
+
+async function updateSupabaseProfileFromSubscription(input: {
+    userId: string;
+    customerId?: string | null;
+    subscriptionId?: string | null;
+    subscriptionStatus?: string | null;
+    plan?: string | null;
+}) {
+    const normalizedPlan = normalizeCloudPlan(input.plan || 'FREE');
+    const capabilities = getPlanCapabilities(normalizedPlan);
+
+    try {
+        await updateCloudProfileById(input.userId, {
+            plan: normalizedPlan,
+            cloudSyncEnabled: capabilities.cloudSyncEnabled,
+            stripeCustomerId: input.customerId ?? null,
+            stripeSubscriptionId: input.subscriptionId ?? null,
+            stripeSubscriptionStatus: input.subscriptionStatus ?? null,
+        });
+    } catch {
+        await upsertCloudProfile({
+            id: input.userId,
+            plan: normalizedPlan,
+            cloudSyncEnabled: capabilities.cloudSyncEnabled,
+            stripeCustomerId: input.customerId ?? null,
+            stripeSubscriptionId: input.subscriptionId ?? null,
+            stripeSubscriptionStatus: input.subscriptionStatus ?? null,
+        });
+    }
+}
 
 export async function POST(req: Request) {
+    let stripe;
+    try {
+        stripe = getStripeClient();
+    } catch {
+        return new NextResponse('Stripe is not configured', { status: 503 });
+    }
+
     const body = await req.text();
     const signature = (await headers()).get('Stripe-Signature') as string;
 
@@ -25,23 +66,18 @@ export async function POST(req: Request) {
 
     if (event.type === 'checkout.session.completed') {
         const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
+        const userId = String(session?.metadata?.userId || '');
 
-        if (!session?.metadata?.userId) {
+        if (!userId) {
             return new NextResponse('User id is required', { status: 400 });
         }
 
-        await dbConnect();
-
-        // Map price/product ID to plan name
-        // Ideally we store the price ID in the ENV or DB
-        // For now we will assume the metadata contains the plan name
-        const plan = session?.metadata?.plan;
-
-        await User.findByIdAndUpdate(session.metadata.userId, {
-            stripeCustomerId: subscription.customer as string,
+        await updateSupabaseProfileFromSubscription({
+            userId,
+            customerId: String(subscription.customer || ''),
             subscriptionId: subscription.id,
             subscriptionStatus: subscription.status,
-            plan: plan || 'FREE', // Default to FREE if something goes wrong, but should not happen
+            plan: session?.metadata?.plan || 'FREE',
         });
     }
 
@@ -53,10 +89,21 @@ export async function POST(req: Request) {
 
         if (subscriptionId) {
             const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-            await dbConnect();
-            await User.findOneAndUpdate({ subscriptionId: subscription.id }, {
-                subscriptionStatus: subscription.status,
-            });
+            const customerId = typeof invoice.customer === 'string'
+                ? invoice.customer
+                : invoice.customer?.id;
+
+            if (customerId) {
+                const profile = await getCloudProfileByStripeCustomerId(customerId);
+
+                if (profile) {
+                    await updateCloudProfileById(profile.id, {
+                        stripeCustomerId: customerId,
+                        stripeSubscriptionId: subscription.id,
+                        stripeSubscriptionStatus: subscription.status,
+                    });
+                }
+            }
         }
     }
 
@@ -68,47 +115,75 @@ export async function POST(req: Request) {
 
         if (subscriptionId) {
             const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-            await dbConnect();
-            await User.findOneAndUpdate({ subscriptionId: subscription.id }, {
-                subscriptionStatus: subscription.status, // e.g. 'past_due'
-            });
+            const customerId = typeof invoice.customer === 'string'
+                ? invoice.customer
+                : invoice.customer?.id;
+
+            if (customerId) {
+                const profile = await getCloudProfileByStripeCustomerId(customerId);
+
+                if (profile) {
+                    await updateCloudProfileById(profile.id, {
+                        stripeCustomerId: customerId,
+                        stripeSubscriptionId: subscription.id,
+                        stripeSubscriptionStatus: subscription.status,
+                    });
+                }
+            }
         }
     }
 
     if (event.type === 'customer.subscription.updated') {
         const subscription = event.data.object as any;
-        await dbConnect();
-
-        // If the update is a cancellation (cancel_at_period_end = true), status might still be active
-        // If the update involves a plan change, we need to map the new Price ID to a Plan Name
-
-        // Get the price ID from the first item
         const priceId = subscription.items.data[0].price.id;
         const planFromPrice = getPlanByPriceId(priceId);
-
-        // Fallback: Try to find the plan name from metadata on the subscription object itself
         const plan = planFromPrice || subscription.metadata?.plan;
 
-        const updateData: any = {
-            subscriptionStatus: subscription.status,
-        };
+        const customerId = typeof subscription.customer === 'string'
+            ? subscription.customer
+            : subscription.customer?.id;
 
-        if (plan) {
-            updateData.plan = plan;
+        if (customerId) {
+            const profile = await getCloudProfileByStripeCustomerId(customerId);
+
+            if (profile) {
+                const updateData: any = {
+                    stripeCustomerId: customerId,
+                    stripeSubscriptionId: subscription.id,
+                    stripeSubscriptionStatus: subscription.status,
+                };
+
+                if (plan) {
+                    const normalizedPlan = normalizeCloudPlan(plan);
+                    updateData.plan = normalizedPlan;
+                    updateData.cloudSyncEnabled = getPlanCapabilities(normalizedPlan).cloudSyncEnabled;
+                }
+
+                await updateCloudProfileById(profile.id, updateData);
+            }
         }
-
-        await User.findOneAndUpdate({ subscriptionId: subscription.id }, updateData);
     }
 
     if (event.type === 'customer.subscription.deleted') {
         const subscription = event.data.object as any;
-        await dbConnect();
 
-        // Subscription canceled/deleted -> Revert to FREE
-        await User.findOneAndUpdate({ subscriptionId: subscription.id }, {
-            subscriptionStatus: subscription.status, // 'canceled'
-            plan: 'FREE',
-        });
+        const customerId = typeof subscription.customer === 'string'
+            ? subscription.customer
+            : subscription.customer?.id;
+
+        if (customerId) {
+            const profile = await getCloudProfileByStripeCustomerId(customerId);
+
+            if (profile) {
+                await updateCloudProfileById(profile.id, {
+                    stripeCustomerId: customerId,
+                    stripeSubscriptionId: subscription.id,
+                    stripeSubscriptionStatus: subscription.status,
+                    plan: 'FREE',
+                    cloudSyncEnabled: false,
+                });
+            }
+        }
     }
 
     return new NextResponse(null, { status: 200 });

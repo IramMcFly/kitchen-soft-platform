@@ -1,104 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { jwtVerify } from 'jose';
-import dbConnect from '@/lib/db';
-import RemoteProduct from '@/models/RemoteProduct';
-import RemoteTable from '@/models/RemoteTable';
-import RemoteSession from '@/models/RemoteSession';
-import RemoteOrder from '@/models/RemoteOrder';
+import { authenticateCloudToken, getCloudTokenFromRequest } from '@/lib/cloud-auth';
+import { upsertCloudSyncPayload } from '@/lib/cloud-sync-store';
 
 export async function POST(req: NextRequest) {
     try {
-        // 1. Auth Validation
-        const authHeader = req.headers.get('Authorization');
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        const token = getCloudTokenFromRequest(req);
+
+        if (!token) {
             return NextResponse.json({ message: 'No autorizado' }, { status: 401 });
         }
 
-        const token = authHeader.split(' ')[1];
-        const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET);
+        const identity = await authenticateCloudToken(token);
 
-        let userId: string;
-
-        try {
-            const { payload } = await jwtVerify(token, secret);
-            userId = payload.userId as string;
-        } catch (err) {
+        if (!identity?.userId) {
             return NextResponse.json({ message: 'Token inválido' }, { status: 401 });
         }
 
-        if (!userId) {
-            return NextResponse.json({ message: 'Token inválido' }, { status: 401 });
+        if (!identity.cloudSyncEnabled) {
+            return NextResponse.json(
+                { message: 'Tu plan no incluye sincronización en la nube' },
+                { status: 403 }
+            );
         }
 
-        // 2. Process Payload
         const body = await req.json();
-        const { products, tables, sessions, orders } = body;
-
-        await dbConnect();
-
-        const results = {
-            products: 0,
-            tables: 0,
-            sessions: 0,
-            orders: 0
+        const payload = {
+            users: Array.isArray(body?.users) ? body.users : [],
+            products: Array.isArray(body?.products) ? body.products : [],
+            tables: Array.isArray(body?.tables) ? body.tables : [],
+            sessions: Array.isArray(body?.sessions) ? body.sessions : [],
+            orders: Array.isArray(body?.orders) ? body.orders : [],
+            categories: Array.isArray(body?.categories) ? body.categories : [],
+            inventoryMovements: Array.isArray(body?.inventoryMovements) ? body.inventoryMovements : [],
         };
 
-        // 3. Bulk Writes using replaceOne with upsert
-        // Products
-        if (products && products.length > 0) {
-            const ops = products.map((p: any) => ({
-                replaceOne: {
-                    filter: { userId, localId: p.localId },
-                    replacement: { ...p, userId, syncedAt: new Date() },
-                    upsert: true
-                }
-            }));
-            const res = await RemoteProduct.bulkWrite(ops);
-            results.products = res.upsertedCount + res.modifiedCount;
-        }
-
-        // Tables
-        if (tables && tables.length > 0) {
-            const ops = tables.map((t: any) => ({
-                replaceOne: {
-                    filter: { userId, localId: t.localId },
-                    replacement: { ...t, userId, syncedAt: new Date() },
-                    upsert: true
-                }
-            }));
-            const res = await RemoteTable.bulkWrite(ops);
-            results.tables = res.upsertedCount + res.modifiedCount;
-        }
-
-        // Sessions (Cajas)
-        if (sessions && sessions.length > 0) {
-            const ops = sessions.map((s: any) => ({
-                replaceOne: {
-                    filter: { userId, localId: s.localId },
-                    replacement: { ...s, userId, syncedAt: new Date() },
-                    upsert: true
-                }
-            }));
-            const res = await RemoteSession.bulkWrite(ops);
-            results.sessions = res.upsertedCount + res.modifiedCount;
-        }
-
-        // Orders
-        if (orders && orders.length > 0) {
-            const ops = orders.map((o: any) => ({
-                replaceOne: {
-                    filter: { userId, localId: o.localId },
-                    replacement: { ...o, userId, syncedAt: new Date() },
-                    upsert: true
-                }
-            }));
-            const res = await RemoteOrder.bulkWrite(ops);
-            results.orders = res.upsertedCount + res.modifiedCount;
-        }
+        const results = await upsertCloudSyncPayload(identity.userId, payload, token);
+        const syncedCount = Object.values(results).reduce((sum, value) => sum + Number(value || 0), 0);
 
         return NextResponse.json({
             success: true,
+            provider: 'supabase',
             results,
+            syncedCount,
             timestamp: new Date()
         });
 

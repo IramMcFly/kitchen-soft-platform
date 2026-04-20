@@ -14,7 +14,7 @@ export default function Terms() {
                         <p>Al acceder y utilizar el software Kitchen Soft POS, aceptas estar sujeto a estos términos y condiciones. Si no estás de acuerdo con alguna parte de estos términos, no podrás utilizar nuestro servicio.</p>
 
                         <h2 className="text-xl font-semibold text-gray-800 mt-4 mb-2">2. Licencia de Uso</h2>
-                        <p>Se concede una licencia limitada, no exclusiva e intransferible para utilizar el software de acuerdo con el plan suscrito (Free, Mini o Medium).</p>
+                        <p>Se concede una licencia limitada, no exclusiva e intransferible para utilizar el software de acuerdo con el plan suscrito (FREE o PRO).</p>
 
                         <h2 className="text-xl font-semibold text-gray-800 mt-4 mb-2">3. Restricciones</h2>
                         <p>No está permitido: modificar, descompilar o realizar ingeniería inversa del software; utilizar el software para fines ilegales; compartir tus credenciales de acceso con terceros.</p>

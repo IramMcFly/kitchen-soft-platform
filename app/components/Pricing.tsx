@@ -2,9 +2,18 @@
 
 import { Check, Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { useAuth } from './AuthProvider';
+
+const PRO_MONTHLY_PRICE_USD = 25;
+
+const proBenefits = [
+    'Respaldo en la nube al cierre de caja, sin afectar la operación local.',
+    'Sincronización segura entre dispositivos con aislamiento por cuenta.',
+    'Monitoreo del estado del sistema: filas sincronizadas, última sincronización y dispositivos vinculados.',
+    'Portal de suscripción para autogestionar pagos y cambios de plan.',
+];
 
 const tiers = [
     {
@@ -12,56 +21,36 @@ const tiers = [
         id: 'FREE',
         href: '/auth/register',
         priceMonthly: 'Gratis',
-        description: 'Perfecto para pequeños negocios que están comenzando.',
+        description: 'Operación 100% local, ideal para comenzar sin costo.',
         features: [
             '1 Sucursal',
             'Almacenamiento 100% local',
-            'Máximo 1 Administrador',
-            'Máximo 4 Mesas',
-            'Máximo 1 Caja',
-            'Máximo 1 Cajero',
-            'Máximo 1 Cocinero',
-            'Máximo 2 Meseros',
+            'Operación local ilimitada',
+            'Sin respaldos en la nube',
+            'Sincronización cloud deshabilitada',
         ],
     },
     {
-        name: 'Plan Mini',
-        id: 'MINI',
-        href: '/auth/register?plan=MINI',
-        priceMonthly: '$100 MXN',
-        description: 'Para negocios en crecimiento que necesitan más capacidad.',
+        name: 'Plan PRO',
+        id: 'PRO',
+        href: '/auth/register?plan=PRO',
+        priceMonthly: `$${PRO_MONTHLY_PRICE_USD} USD`,
+        description: 'Pensado para operar localmente y proteger tu negocio con respaldo y sincronización en la nube.',
         features: [
             '1 Sucursal',
             'Almacenamiento 100% local',
-            'Máximo 2 Administradores',
-            'Máximo 8 Mesas',
-            'Máximo 1 Caja',
-            'Máximo 2 Cajeros',
-            'Máximo 2 Cocineros',
-            'Máximo 2 Meseros',
-        ],
-    },
-    {
-        name: 'Plan Medium',
-        id: 'MEDIUM',
-        href: '/auth/register?plan=MEDIUM',
-        priceMonthly: '$300 MXN',
-        description: 'La solución ideal para restaurantes establecidos.',
-        features: [
-            '1 Sucursal',
-            'Almacenamiento 100% local',
-            'Máximo 4 Administradores',
-            'Máximo 20 Mesas',
-            'Máximo 2 Cajas simultáneas',
-            'Máximo 4 Cajeros',
-            'Máximo 8 Cocineros',
-            'Máximo 12 Meseros',
+            'Operación local ilimitada',
+            'Respaldos automáticos al cierre de caja',
+            'Sincronización multi-dispositivo por cuenta',
+            'Panel con insights del sistema en tiempo real',
+            'Aislamiento de datos por usuario (multi-tenant)',
+            'Gestión de suscripción desde portal de cliente',
         ],
     },
 ];
 
 export default function Pricing() {
-    const { data: session } = useSession();
+    const { user, isAuthenticated } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
     const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
@@ -77,12 +66,12 @@ export default function Pricing() {
     }, [searchParams, router]);
 
     const handleSubscription = async (planId: string) => {
-        if (!session) {
+        if (!isAuthenticated) {
             router.push(`/auth/register?plan=${planId}`);
             return;
         }
 
-        const isCurrentPlan = session.user?.plan === planId || (!session.user?.plan && planId === 'FREE');
+        const isCurrentPlan = user?.plan === planId || (!user?.plan && planId === 'FREE');
         if (isCurrentPlan) {
             return; // Already on this plan
         }
@@ -92,7 +81,7 @@ export default function Pricing() {
 
             // If user already has a paid plan, send them to the Portal to manage/switch plans
             // instead of creating a new checkout session.
-            const hasPaidPlan = session.user?.plan && session.user.plan !== 'FREE';
+            const hasPaidPlan = user?.plan && user.plan !== 'FREE';
 
             if (hasPaidPlan) {
                 const response = await fetch('/api/stripe/portal', {
@@ -142,15 +131,15 @@ export default function Pricing() {
                     </p>
                 </div>
                 <p className="mx-auto mt-6 max-w-2xl text-center text-lg leading-8 text-gray-600">
-                    Elige el plan que mejor se adapte a las necesidades de tu restaurante. Todos los planes incluyen almacenamiento local seguro.
+                    Elige entre FREE y PRO. Ambos operan localmente; PRO agrega respaldo en la nube, sincronización segura y monitoreo del sistema por $25 USD al mes.
                 </p>
-                <div className="isolate mx-auto mt-16 grid max-w-md grid-cols-1 gap-8 lg:mx-0 lg:max-w-none lg:grid-cols-3">
+                <div className="isolate mx-auto mt-16 grid max-w-md grid-cols-1 gap-8 lg:mx-auto lg:max-w-4xl lg:grid-cols-2">
                     {tiers.map((tier) => {
                         // Check if this is the user's current plan
-                        const isCurrentPlan = session?.user?.plan === tier.id || (!session?.user?.plan && tier.id === 'FREE');
+                        const isCurrentPlan = user?.plan === tier.id || (!user?.plan && tier.id === 'FREE');
 
                         // User is logged in but this is NOT their plan (so it's an upgrade/downgrade option)
-                        const isUpgradeOption = session && !isCurrentPlan;
+                        const isUpgradeOption = isAuthenticated && !isCurrentPlan;
 
                         // Should the button be disabled?
                         // Disabled if: 
@@ -162,7 +151,7 @@ export default function Pricing() {
                         return (
                             <div
                                 key={tier.name}
-                                className={`rounded-3xl p-8 ring-1 ring-gray-200 xl:p-10 ${tier.name === 'Plan Mini' ? 'bg-white shadow-2xl ring-orange-600 scale-105' : 'bg-white ring-gray-200'
+                                className={`rounded-3xl p-8 ring-1 ring-gray-200 xl:p-10 ${tier.id === 'PRO' ? 'bg-white shadow-2xl ring-orange-600 scale-105' : 'bg-white ring-gray-200'
                                     }`}
                             >
                                 <h3
@@ -183,7 +172,7 @@ export default function Pricing() {
                                     aria-describedby={tier.name}
                                     className={`mt-6 w-full flex items-center justify-center rounded-md py-2 px-3 text-center text-sm font-semibold leading-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${isCurrentPlan
                                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                        : tier.name === 'Plan Mini' || isUpgradeOption
+                                        : tier.id === 'PRO' || isUpgradeOption
                                             ? 'bg-orange-600 text-white shadow-sm hover:bg-orange-500 focus-visible:outline-orange-600'
                                             : 'bg-orange-50 text-orange-600 hover:bg-orange-100'
                                         }`}
@@ -192,7 +181,7 @@ export default function Pricing() {
                                         <Loader2 className="animate-spin h-5 w-5" />
                                     ) : isCurrentPlan ? (
                                         'Tu Plan Actual'
-                                    ) : session ? (
+                                    ) : isAuthenticated ? (
                                         'Actualizar Plan'
                                     ) : (
                                         'Elegir plan'
@@ -210,6 +199,21 @@ export default function Pricing() {
                             </div>
                         )
                     })}
+                </div>
+
+                <div className="mx-auto mt-10 max-w-4xl rounded-2xl border border-orange-200 bg-orange-50 p-6 sm:p-8">
+                    <h3 className="text-lg font-semibold text-orange-900">Beneficios de activar PRO</h3>
+                    <p className="mt-2 text-sm text-orange-800">
+                        Con PRO mantienes tu operación local y sumas una capa de continuidad para proteger ventas, inventario y trazabilidad operativa.
+                    </p>
+                    <ul className="mt-5 grid grid-cols-1 gap-3 text-sm leading-6 text-orange-900 sm:grid-cols-2">
+                        {proBenefits.map((benefit) => (
+                            <li key={benefit} className="flex gap-x-2">
+                                <Check className="h-5 w-5 flex-none text-orange-700" aria-hidden="true" />
+                                <span>{benefit}</span>
+                            </li>
+                        ))}
+                    </ul>
                 </div>
             </div>
         </div>
