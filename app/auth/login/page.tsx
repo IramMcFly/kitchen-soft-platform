@@ -126,6 +126,11 @@ export default function Login() {
                                     placeholder="••••••••"
                                 />
                             </div>
+                            <div className="mt-2 text-right">
+                                <Link href="/auth/forgot-password" className="text-xs text-orange-600 hover:text-orange-500">
+                                    Olvide mi contrasena
+                                </Link>
+                            </div>
                         </div>
 
                         <div>

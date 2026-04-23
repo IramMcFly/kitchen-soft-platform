@@ -19,6 +19,10 @@ export const externalLoginSchema = z.object({
     deviceName: z.string().optional(),
 });
 
+export const externalForgotPasswordSchema = z.object({
+    email: z.string().email('Correo electrónico inválido'),
+});
+
 export const profileUpdateSchema = z.object({
     name: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
     restaurantName: z.string().min(2, 'El nombre del restaurante es obligatorio'),
