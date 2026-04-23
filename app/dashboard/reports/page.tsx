@@ -3,12 +3,25 @@
 import { useEffect, useState } from 'react';
 import Navbar from '../../components/Navbar';
 import { BarChart3, DollarSign, ShoppingBag, Users, UtensilsCrossed } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '../../components/AuthProvider';
 
 export default function ReportsPage() {
+    const { status } = useAuth();
+    const router = useRouter();
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (status === 'unauthenticated') {
+            router.replace('/auth/login');
+            return;
+        }
+
+        if (status !== 'authenticated') {
+            return;
+        }
+
         const fetchStats = async () => {
             try {
                 const res = await fetch('/api/reports/stats');
@@ -24,7 +37,23 @@ export default function ReportsPage() {
         };
 
         fetchStats();
-    }, []);
+    }, [router, status]);
+
+    if (status === 'loading') {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <p className="text-sm text-gray-600">Cargando sesion...</p>
+            </div>
+        );
+    }
+
+    if (status === 'unauthenticated') {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+                <p className="text-sm text-gray-600">Sesion expirada. Redirigiendo a inicio de sesion...</p>
+            </div>
+        );
+    }
 
     const StatCard = ({ title, value, icon: Icon, color }: any) => (
         <div className="bg-white overflow-hidden shadow rounded-lg border border-gray-100">

@@ -220,7 +220,11 @@ export default function Dashboard() {
     }
 
     if (status === 'unauthenticated') {
-        return null;
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+                <p className="text-sm text-gray-600">Sesion expirada. Redirigiendo a inicio de sesion...</p>
+            </div>
+        );
     }
 
     return (

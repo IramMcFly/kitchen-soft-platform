@@ -7,6 +7,18 @@ import { getPlanCapabilities } from '@/lib/cloud-plan';
 const COOKIE_NAME = 'ksp_token';
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
+function resolveCookieMaxAge(expiresAt?: number | null) {
+  if (!expiresAt) {
+    return COOKIE_MAX_AGE_SECONDS;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const ttl = Math.max(0, expiresAt - now);
+
+  // Keep cookie lifetime aligned with token validity to avoid stale sessions.
+  return ttl > 0 ? ttl : 60;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -73,7 +85,7 @@ export async function POST(req: NextRequest) {
       sameSite: 'lax',
       secure: process.env.NODE_ENV === 'production',
       path: '/',
-      maxAge: COOKIE_MAX_AGE_SECONDS,
+      maxAge: resolveCookieMaxAge(data.session.expires_at),
     });
 
     return response;
