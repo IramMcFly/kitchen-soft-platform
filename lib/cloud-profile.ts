@@ -27,45 +27,80 @@ export type CloudDevice = {
   createdAt: string;
 };
 
-function createDefaultName(email?: string | null, metadata?: Record<string, any>) {
-  if (metadata?.name) return String(metadata.name);
-  if (metadata?.full_name) return String(metadata.full_name);
+type UnknownRecord = Record<string, unknown>;
+
+function getStringValue(record: UnknownRecord | undefined, key: string): string | undefined {
+  const value = record?.[key];
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function getNullableStringValue(record: UnknownRecord | undefined, key: string): string | null {
+  const value = record?.[key];
+  if (value === null) {
+    return null;
+  }
+
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function getBooleanValue(record: UnknownRecord | undefined, key: string): boolean | undefined {
+  const value = record?.[key];
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function createDefaultName(email?: string | null, metadata?: UnknownRecord) {
+  const metadataName = getStringValue(metadata, 'name');
+  if (metadataName) return metadataName;
+
+  const metadataFullName = getStringValue(metadata, 'full_name');
+  if (metadataFullName) return metadataFullName;
+
   if (!email) return 'Propietario';
   return String(email).split('@')[0] || 'Propietario';
 }
 
-function createDefaultRestaurantName(metadata?: Record<string, any>) {
-  if (metadata?.restaurantName) return String(metadata.restaurantName);
-  if (metadata?.restaurant_name) return String(metadata.restaurant_name);
+function createDefaultRestaurantName(metadata?: UnknownRecord) {
+  const byCamelCase = getStringValue(metadata, 'restaurantName');
+  if (byCamelCase) return byCamelCase;
+
+  const bySnakeCase = getStringValue(metadata, 'restaurant_name');
+  if (bySnakeCase) return bySnakeCase;
+
   return 'Mi Restaurante';
 }
 
-function normalizeProfile(row: any): CloudProfile {
-  const plan = normalizeCloudPlan(row?.plan);
+function normalizeProfile(row: unknown): CloudProfile {
+  const record = (row && typeof row === 'object' ? row : {}) as UnknownRecord;
+  const plan = normalizeCloudPlan(getStringValue(record, 'plan'));
   const capabilities = getPlanCapabilities(plan);
+  const role = getStringValue(record, 'role');
+  const isActive = getBooleanValue(record, 'is_active');
+  const cloudSyncEnabled = getBooleanValue(record, 'cloud_sync_enabled');
 
   return {
-    id: row.id,
-    name: row.name || 'Propietario',
-    email: row.email || '',
-    restaurant_name: row.restaurant_name || 'Mi Restaurante',
+    id: getStringValue(record, 'id') || '',
+    name: getStringValue(record, 'name') || 'Propietario',
+    email: getStringValue(record, 'email') || '',
+    restaurant_name: getStringValue(record, 'restaurant_name') || 'Mi Restaurante',
     plan,
-    role: row.role === 'ADMIN' ? 'ADMIN' : 'OWNER',
-    is_active: row.is_active !== false,
-    cloud_sync_enabled: row.cloud_sync_enabled ?? capabilities.cloudSyncEnabled,
-    stripe_customer_id: row.stripe_customer_id ?? null,
-    stripe_subscription_id: row.stripe_subscription_id ?? null,
-    stripe_subscription_status: row.stripe_subscription_status ?? null,
+    role: role === 'ADMIN' ? 'ADMIN' : 'OWNER',
+    is_active: isActive !== false,
+    cloud_sync_enabled: cloudSyncEnabled ?? capabilities.cloudSyncEnabled,
+    stripe_customer_id: getNullableStringValue(record, 'stripe_customer_id'),
+    stripe_subscription_id: getNullableStringValue(record, 'stripe_subscription_id'),
+    stripe_subscription_status: getNullableStringValue(record, 'stripe_subscription_status'),
   };
 }
 
-function normalizeDevice(row: any): CloudDevice {
+function normalizeDevice(row: unknown): CloudDevice {
+  const record = (row && typeof row === 'object' ? row : {}) as UnknownRecord;
+
   return {
-    id: String(row?.id || ''),
-    deviceId: String(row?.device_id || ''),
-    name: String(row?.name || 'Dispositivo'),
-    lastLogin: String(row?.last_login_at || row?.updated_at || new Date().toISOString()),
-    createdAt: String(row?.created_at || new Date().toISOString()),
+    id: getStringValue(record, 'id') || '',
+    deviceId: getStringValue(record, 'device_id') || '',
+    name: getStringValue(record, 'name') || 'Dispositivo',
+    lastLogin: getStringValue(record, 'last_login_at') || getStringValue(record, 'updated_at') || new Date().toISOString(),
+    createdAt: getStringValue(record, 'created_at') || new Date().toISOString(),
   };
 }
 
@@ -162,15 +197,17 @@ export async function ensureCloudProfileFromAuthUser(authUser: User): Promise<Cl
     return existing;
   }
 
-  const metadata = (authUser.user_metadata || {}) as Record<string, any>;
+  const metadata = (authUser.user_metadata || {}) as UnknownRecord;
+  const metadataPlan = getStringValue(metadata, 'plan') || 'FREE';
+  const metadataRole = getStringValue(metadata, 'role') || 'OWNER';
 
   return upsertCloudProfile({
     id: authUser.id,
     email: authUser.email,
     name: createDefaultName(authUser.email, metadata),
     restaurantName: createDefaultRestaurantName(metadata),
-    plan: metadata.plan || 'FREE',
-    role: metadata.role || 'OWNER',
+    plan: metadataPlan,
+    role: metadataRole,
     isActive: true,
   });
 }
@@ -244,7 +281,35 @@ export async function listCloudDevices(userId: string): Promise<CloudDevice[]> {
     throw new Error(`Error loading devices: ${error.message}`);
   }
 
-  return (data || []).map((row: any) => normalizeDevice(row));
+  return (data || []).map((row) => normalizeDevice(row));
+}
+
+export async function isCloudDeviceLinked(userId: string, deviceId: string): Promise<boolean> {
+  const admin = createSupabaseAdminClient();
+
+  if (!admin || !userId || !deviceId) {
+    return false;
+  }
+
+  const normalizedDeviceId = deviceId.trim();
+
+  if (!normalizedDeviceId) {
+    return false;
+  }
+
+  const { data, error } = await admin
+    .from('user_devices')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('device_id', normalizedDeviceId)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Error validating cloud device: ${error.message}`);
+  }
+
+  return Boolean(data?.id);
 }
 
 export async function upsertCloudDevice(input: {
