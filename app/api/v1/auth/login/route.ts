@@ -8,8 +8,6 @@ import {
 
 import { externalLoginSchema } from '@/lib/validations';
 
-const CLOUD_SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-
 export async function POST(req: Request) {
     try {
         const body = await req.json();
@@ -56,15 +54,12 @@ export async function POST(req: Request) {
 
             const devices = await listCloudDevices(profile.id);
             const linkedAt = Date.now();
-            const offlineExpiresAt = linkedAt + CLOUD_SESSION_MAX_AGE_MS;
 
             return NextResponse.json({
                 token: data.session.access_token,
                 provider: 'supabase',
                 session: {
                     linkedAt,
-                    offlineExpiresAt,
-                    maxAgeMs: CLOUD_SESSION_MAX_AGE_MS,
                 },
                 user: {
                     id: profile.id,

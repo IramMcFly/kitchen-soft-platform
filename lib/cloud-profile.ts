@@ -324,10 +324,25 @@ export async function upsertCloudDevice(input: {
   }
 
   const deviceName = (input.name || '').trim() || 'Dispositivo';
+  const normalizedDeviceId = input.deviceId.trim();
+
+  if (!normalizedDeviceId) {
+    throw new Error('Device ID is required');
+  }
+
+  const { error: clearError } = await admin
+    .from('user_devices')
+    .delete()
+    .eq('user_id', input.userId)
+    .neq('device_id', normalizedDeviceId);
+
+  if (clearError) {
+    throw new Error(`Error clearing previous devices: ${clearError.message}`);
+  }
 
   const payload = {
     user_id: input.userId,
-    device_id: input.deviceId,
+    device_id: normalizedDeviceId,
     name: deviceName,
     last_login_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

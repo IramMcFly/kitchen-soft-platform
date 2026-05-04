@@ -49,6 +49,8 @@ export async function POST(req: NextRequest) {
             metadata: {
                 userId: identity.userId,
                 plan: plan,
+                restaurantName: profile?.restaurant_name || identity.restaurantName || 'Mi Restaurante',
+                userName: profile?.name || identity.name || 'Cliente',
             },
             success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?success=true`,
             cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/?canceled=true`,
